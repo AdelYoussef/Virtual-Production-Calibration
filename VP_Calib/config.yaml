@@ -1,0 +1,13 @@
+VP_Cam_sensor_width: 23.5 #mm
+VP_Cam_sensor_height: 15.6 #mm
+VP_Cam_pixels_horizontal: 6000  #pixels
+VP_Cam_pixels_vertical: 4000 #pixels
+FRAME_WIDTH: 1920
+FRAME_HEIGHT: 1080
+VIEW_RESIZE: 0.8 
+CHECKERBOARD_ROWS: 6
+CHECKERBOARD_COLUMNS: 9
+CHECKERBOARD_SIZE: 35 #mm
+ARUCO_MARKER_SIZE: 150 #mm
+ARUCO_MARKER_ID: 8
+show_Calibration_images: False
