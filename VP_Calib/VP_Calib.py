@@ -39,23 +39,22 @@ class VP_Calib:
         self.VP_Cam_pixels_horizontal = config["VP_Cam_pixels_horizontal"]
         self.VP_Cam_pixels_vertical = config["VP_Cam_pixels_vertical"]
 
-        self.show_Calibration_images = config["show_Calibration_images"]
         self.CHECKERBOARD_SIZE = config["CHECKERBOARD_SIZE"]
         self.ARUCO_MARKER_SIZE = config["ARUCO_MARKER_SIZE"]
         self.ARUCO_MARKER_ID = config["ARUCO_MARKER_ID"]
 
-        CHECKERBOARD_ROWS = config["CHECKERBOARD_ROWS"]
-        CHECKERBOARD_COLUMNS = config["CHECKERBOARD_COLUMNS"]
-
-        self.CHESS_BOARD_DIM = (CHECKERBOARD_ROWS , CHECKERBOARD_COLUMNS)
-
         FRAME_WIDTH = config["FRAME_WIDTH"]
         FRAME_HEIGHT = config["FRAME_HEIGHT"]
-        self.FRAME_DIM = (FRAME_WIDTH , FRAME_HEIGHT) 
-
         VIEW_RESIZE = config["VIEW_RESIZE"]
+        
+        CHECKERBOARD_ROWS = config["CHECKERBOARD_ROWS"]
+        CHECKERBOARD_COLUMNS = config["CHECKERBOARD_COLUMNS"]
+        
+        self.FRAME_DIM = (FRAME_WIDTH , FRAME_HEIGHT) 
+        self.CHESS_BOARD_DIM = (CHECKERBOARD_ROWS , CHECKERBOARD_COLUMNS)
         self.VIEW_DIM = (int(FRAME_WIDTH * VIEW_RESIZE) , int(FRAME_HEIGHT * VIEW_RESIZE)) 
         
+        self.show_Calibration_images = config["show_Calibration_images"]
 
     def Init_Live_Camera(self, Camera_Type = None, id = None):
 
