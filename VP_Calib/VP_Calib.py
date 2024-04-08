@@ -45,7 +45,7 @@ class VP_Calib:
         self.CHECKERBOARD_SIZE = config["CHECKERBOARD_SIZE"]
         self.ARUCO_MARKER_SIZE = config["ARUCO_MARKER_SIZE"]
         self.ARUCO_MARKER_ID = config["ARUCO_MARKER_ID"]
-
+        self.ARUCO_MODE = config["ARUCO_MODE"]
         FRAME_WIDTH = config["FRAME_WIDTH"]
         FRAME_HEIGHT = config["FRAME_HEIGHT"]
         VIEW_RESIZE = config["VIEW_RESIZE"]
@@ -148,22 +148,29 @@ class VP_Calib:
                                                 dtype = float)
         
     #detects the presence of an aruco marker in a passed frame and returns a new frame with plotted detection
-    def Aruco_Detection(self, Frame, Draw = True):
+    def Aruco_Detection(self, Frame):
         self.Camera_marker_corners,  self.Camera_marker_IDs, Camera_reject = aruco.detectMarkers(Frame, self.marker_dict)
         if self.Camera_marker_corners:
             Camera_rVec_Aruco, Camera_tVec_Aruco, _ = aruco.estimatePoseSingleMarkers(self.Camera_marker_corners, self.ARUCO_MARKER_SIZE, self.Aruco_Cam_Mat, self.Aruco_Cam_Dist)
             index = np.where( self.Camera_marker_IDs==self.ARUCO_MARKER_ID)[0][0]
+
             self.corners  = self.Camera_marker_corners[index]
             self.Rot_Vec = np.squeeze(Camera_rVec_Aruco[index])
             self.Trans_Vec = np.squeeze(Camera_tVec_Aruco[index])
+
+
             self.Camera_Transform_Aruco[:3,3] = self.Trans_Vec
             self.Camera_Transform_Aruco[:3,:3] , _ = cv2.Rodrigues(self.Rot_Vec)
             Rot =  Rotation.from_matrix(self.Camera_Transform_Aruco[:3,:3] )
-            self.euler_angles_Aruco = Rot.as_euler("xyz",degrees=True)
+            self.Euler_Angles_Aruco = Rot.as_euler("xyz",degrees=True)
             
-            # self.Aruco_Transform_Camera = np.linalg.inv(self.Camera_Transform_Aruco)
-            if(Draw):
-                return self.Arcuo_Draw_Detection(Frame)
+            self.Aruco_Transform_Camera = np.linalg.inv(self.Camera_Transform_Aruco)
+
+            self.Inv_Trans_Vec = self.Aruco_Transform_Camera [:3,3]
+            Inv_Rot = Rotation.from_matrix(self.Aruco_Transform_Camera[:3,:3])
+            self.Inv_Euler_Angles_Aruco = Inv_Rot.as_euler("xyz",degrees=True)
+            
+            self.Arcuo_Draw_Detection(Frame)
                 
 
         
@@ -182,15 +189,26 @@ class VP_Calib:
         cv2.circle(Frame, bottom_left, 2, (0,255,0), 2)
 
         cv2.drawFrameAxes(Frame, self.Aruco_Cam_Mat, self.Aruco_Cam_Dist, self.Rot_Vec, self.Trans_Vec, 4, 4)
-        cv2.putText(Frame,
-                    f"x:{round(self.Trans_Vec[0],1)} y: {round(self.Trans_Vec[1],1)} z: {round(self.Trans_Vec[2],1)} ",
-                    (50, 50),cv2.FONT_HERSHEY_PLAIN,1.0,(0, 0, 255),2,cv2.LINE_AA,)
 
-        cv2.putText(Frame,
-                    f"Rot x:{round(self.euler_angles_Aruco[0],1)} Rot y: {round(self.euler_angles_Aruco[1],1)} Rot z: {round(self.euler_angles_Aruco[2],1)} "  ,
-                    (75, 75),cv2.FONT_HERSHEY_PLAIN,1.0,(0, 0, 255),2,cv2.LINE_AA,)
-        
-        return Frame
+        if(self.ARUCO_MODE == "Aruco Pose"):
+            cv2.putText(Frame,
+                        f"x:{round(self.Trans_Vec[0],1)} y: {round(self.Trans_Vec[1],1)} z: {round(self.Trans_Vec[2],1)} ",
+                        (50, 50),cv2.FONT_HERSHEY_PLAIN,1.5,(0, 0, 255),4,cv2.LINE_AA,)
+
+            cv2.putText(Frame,
+                        f"Rot x:{round(self.Euler_Angles_Aruco[0],1)} Rot y: {round(self.Euler_Angles_Aruco[1],1)} Rot z: {round(self.Euler_Angles_Aruco[2],1)} "  ,
+                        (75, 75),cv2.FONT_HERSHEY_PLAIN,1.5,(0, 0, 255),4,cv2.LINE_AA,)
+
+
+        if(self.ARUCO_MODE == "Camera Pose"):
+            cv2.putText(Frame,
+                        f"x:{round(self.Inv_Trans_Vec[0],1)} y: {round(self.Inv_Trans_Vec[1],1)} z: {round(self.Inv_Trans_Vec[2],1)} ",
+                        (50, 50),cv2.FONT_HERSHEY_PLAIN,1.5,(0, 0, 255),4,cv2.LINE_AA,)
+
+            cv2.putText(Frame,
+                        f"Rot x:{round(self.Inv_Euler_Angles_Aruco[0],1)} Rot y: {round(self.Inv_Euler_Angles_Aruco[1],1)} Rot z: {round(self.Inv_Euler_Angles_Aruco[2],1)} "  ,
+                        (75, 75),cv2.FONT_HERSHEY_PLAIN,1.5,(0, 0, 255),4,cv2.LINE_AA,)
+            
 
 
     #starts a live feed of any camera passed for the purpose of saving a single image to be used later, or just simple monitor for the feed
