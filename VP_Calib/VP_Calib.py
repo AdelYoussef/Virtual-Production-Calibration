@@ -12,6 +12,9 @@ from scipy.spatial.transform import Rotation
 
 
 class VP_Calib:
+
+    # Class Constructor that gets called eveytime a new object is created from the class
+    #sets basic parameters and calls Load_Config function that sets environment variables
     def __init__(self,config_file = "None"):
         
         np.set_printoptions(suppress = True)
@@ -27,7 +30,7 @@ class VP_Calib:
 
         print(self.current_directory)
 
-
+    # reads the config.yaml that hold current values of environment variables 
     def Load_Config(self,config_file):
         config_file_path = os.path.join(self.current_directory , config_file)
 
@@ -55,9 +58,12 @@ class VP_Calib:
         self.VIEW_DIM = (int(FRAME_WIDTH * VIEW_RESIZE) , int(FRAME_HEIGHT * VIEW_RESIZE)) 
         
         self.show_Calibration_images = config["show_Calibration_images"]
-
+        
+    #inits the live camera capturer based on the passed type of the camera
     def Init_Live_Camera(self, Camera_Type = None, id = None):
 
+        #normal webcams usually run by 720x480 
+        #if the webcam supports 1920x1080 then we need to command it to operate at 1920x1080
         if (Camera_Type == "WEBCAM1080"):
             webcam1080 = cv2.VideoCapture(id)
             webcam1080.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'))
@@ -65,10 +71,12 @@ class VP_Calib:
             webcam1080.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
             return webcam1080
         
+        #in case of a virtual production camera "camlink" or a mormal webcam mode , we care for the default resolution
         if (Camera_Type == "WEBCAM" or Camera_Type == "VP"):
             camera = cv2.VideoCapture(id)
             return camera
 
+        #init ZED2 Camera using ZED SDK APi
         if (Camera_Type == "ZED") :
             zed = sl.Camera()
              # Create a InitParameters object and set configuration parameters
@@ -99,7 +107,7 @@ class VP_Calib:
             print("VP/n")
                 
 
-
+    #grabs a frame from the operating image based on the passed category and the passed id
     def Get_Frame(self, Camera_Type, Capture):
         if (Camera_Type == "WEBCAM" or Camera_Type == "VP" or Camera_Type == "WEBCAM1080"):
             _, Frame = Capture.read()
@@ -122,14 +130,14 @@ class VP_Calib:
             return False      
             
 
-            
+    # just a dummy crosshair that marks the center of the image, can be very useful
     def Crosshair(self,Frame):
         width, height = Frame.shape[1] , Frame.shape[0]
         cv2.line(Frame, (int(width/2), 0) , (int(width/2), height) , (0, 255, 0), 2)
         cv2.line(Frame, (0, int(height/2)) , (width, int(height/2)) , (0, 255, 0), 2)
         return Frame
 
-    
+    # inits the detection and pose estimation of an aruco marker, sets aruco dict, inits the transformation matrix, as well as loads the used camera matrix and distortion parameters
     def Init_Aruco(self,Camera_Parameters_File_Path):
         self.Aruco_Cam_Mat, self.Aruco_Cam_Dist = self.Load_Cam_Parameters(Camera_Parameters_File_Path)
         self.marker_dict = aruco.getPredefinedDictionary(aruco.DICT_6X6_100)
@@ -138,7 +146,8 @@ class VP_Calib:
                                                 [0, 0, 0, 0],
                                                 [0, 0, 0, 1]],
                                                 dtype = float)
-                    
+        
+    #detects the presence of an aruco marker in a passed frame and returns a new frame with plotted detection
     def Aruco_Detection(self, Frame, Draw = True):
         self.Camera_marker_corners,  self.Camera_marker_IDs, Camera_reject = aruco.detectMarkers(Frame, self.marker_dict)
         if self.Camera_marker_corners:
@@ -154,48 +163,52 @@ class VP_Calib:
             
             # self.Aruco_Transform_Camera = np.linalg.inv(self.Camera_Transform_Aruco)
             if(Draw):
-                self.Arcuo_Draw_Detection(Frame)
+                return self.Arcuo_Draw_Detection(Frame)
+                
 
+        
+    #draws the plotted detection of any aruco marker present in the camera frame
+    def Arcuo_Draw_Detection(self, Frame):
+        corners = self.corners.reshape(4, 2)
+        top_left = corners[0].ravel().astype(int)
+        top_right = corners[1].ravel().astype(int)
+        bottom_right = corners[2].ravel().astype(int)
+        bottom_left = corners[3].ravel().astype(int)
+
+        cv2.polylines(Frame, [corners.astype(np.int32)], True, (0, 255, 255), 4, cv2.LINE_AA )
+        cv2.circle(Frame, top_left, 2, (0,0,0), 2)
+        cv2.circle(Frame, top_right, 2, (0,0,255), 2)
+        cv2.circle(Frame, bottom_right, 2, (255,0,255), 2)
+        cv2.circle(Frame, bottom_left, 2, (0,255,0), 2)
+
+        cv2.drawFrameAxes(Frame, self.Aruco_Cam_Mat, self.Aruco_Cam_Dist, self.Rot_Vec, self.Trans_Vec, 4, 4)
+        cv2.putText(Frame,
+                    f"x:{round(self.Trans_Vec[0],1)} y: {round(self.Trans_Vec[1],1)} z: {round(self.Trans_Vec[2],1)} ",
+                    (50, 50),cv2.FONT_HERSHEY_PLAIN,1.0,(0, 0, 255),2,cv2.LINE_AA,)
+
+        cv2.putText(Frame,
+                    f"Rot x:{round(self.euler_angles_Aruco[0],1)} Rot y: {round(self.euler_angles_Aruco[1],1)} Rot z: {round(self.euler_angles_Aruco[2],1)} "  ,
+                    (75, 75),cv2.FONT_HERSHEY_PLAIN,1.0,(0, 0, 255),2,cv2.LINE_AA,)
+        
         return Frame
 
-    def Arcuo_Draw_Detection(self, Frame):
-            corners = self.corners.reshape(4, 2)
-            top_left = corners[0].ravel().astype(int)
-            top_right = corners[1].ravel().astype(int)
-            bottom_right = corners[2].ravel().astype(int)
-            bottom_left = corners[3].ravel().astype(int)
 
-            cv2.polylines(Frame, [corners.astype(np.int32)], True, (0, 255, 255), 4, cv2.LINE_AA )
-            cv2.circle(Frame, top_left, 2, (0,0,0), 2)
-            cv2.circle(Frame, top_right, 2, (0,0,255), 2)
-            cv2.circle(Frame, bottom_right, 2, (255,0,255), 2)
-            cv2.circle(Frame, bottom_left, 2, (0,255,0), 2)
-
-            cv2.drawFrameAxes(Frame, self.Aruco_Cam_Mat, self.Aruco_Cam_Dist, self.Rot_Vec, self.Trans_Vec, 4, 4)
-            cv2.putText(Frame,
-                        f"x:{round(self.Trans_Vec[0],1)} y: {round(self.Trans_Vec[1],1)} z: {round(self.Trans_Vec[2],1)} ",
-                        (50, 50),cv2.FONT_HERSHEY_PLAIN,1.0,(0, 0, 255),2,cv2.LINE_AA,)
-
-            cv2.putText(Frame,
-                        f"Rot x:{round(self.euler_angles_Aruco[0],1)} Rot y: {round(self.euler_angles_Aruco[1],1)} Rot z: {round(self.euler_angles_Aruco[2],1)} "  ,
-                        (75, 75),cv2.FONT_HERSHEY_PLAIN,1.0,(0, 0, 255),2,cv2.LINE_AA,)
-
-
-
+    #starts a live feed of any camera passed for the purpose of saving a single image to be used later, or just simple monitor for the feed
     def Capture_Single_Image(self, Camera_Type, id):
         Capture = self.Init_Live_Camera(Camera_Type , id)
         while True:
             Frame = self.Get_Frame(Camera_Type, Capture)
-            Resized_Frame = cv2.resize(Frame, self.VIEW_DIM)
-            cv2.imshow("Frame", Resized_Frame)
+            Frame = cv2.resize(Frame, self.VIEW_DIM)
+            cv2.imshow("Frame", Frame)
             key = cv2.waitKey(1)
             if key == ord("q"):
                 break
             if key == ord("s"):
-                    cv2.imwrite(self.current_directory+f"{Camera_Type}.png", Frame)
+                cv2.imwrite(self.current_directory, Frame)
 
 
-
+    #starts a live feed with purpose of capturing and saving images to be used in camera calibration later 
+    #caputred images need to have a detected checkerboard after setting it's rows and columbns in the config file
     def Mono_Calibration_Capture(self, Camera_Type = "None", id = 0, Camera_Name = "None"):
         Capture = self.Init_Live_Camera(Camera_Type , id)
         now = datetime.now()
@@ -227,7 +240,9 @@ class VP_Calib:
         print("images saved in file ---> " + save_folder)
         return (save_folder)
 
-            
+    #starts a live feed with purpose of capturing and saving images to be used in stereo pair calibration later 
+    #caputred images need to have a detected checkerboard after setting it's rows and columbns in the config file
+    #operates using two cameras at the same time  
     def Stereo_Calibration_Capture(self, Camera_Type_VP, Camera_Type_TR, id_1, id_2, Camera_Name_VP, Camera_Name_TR):
         now = datetime.now()
         dt_string = now.strftime("%d_%m_%Y_%H_%M_%S") 
@@ -266,8 +281,8 @@ class VP_Calib:
                 cv2.imwrite(f"{Camera_Name_TR}/Stereo_Images/{dt_string}/{save_count}.png", TR_Frame)
                 save_count +=1
 
-
-    def Init_Mono_Calib(self,):
+    #sets the holder list of the detect 2D checkboard corners as well as the corresponding 3D points
+    def Init_CheckerBoard(self,):
         # prepare object points, like (0,0,0), (1,0,0), (2,0,0) ....,(6,5,0)
         obj_3D = np.zeros((self.CHESS_BOARD_DIM[0] * self.CHESS_BOARD_DIM[1], 3), np.float32)
         obj_3D[:, :2] = np.mgrid[0 : self.CHESS_BOARD_DIM[0], 0 : self.CHESS_BOARD_DIM[1]].T.reshape(-1, 2)
@@ -280,6 +295,7 @@ class VP_Calib:
 
         return True , obj_3D , obj_points_3D , img_points_2D
     
+    #loads images in a folder, from a passed folder path and returns a list of the loaded images
     def Load_Images(self,image_folder):
         print("images will be loaded ")
         images = []
@@ -296,10 +312,10 @@ class VP_Calib:
         print("loading done")
         return images, (Image_Width, Image_Height) 
      
-
-    def Find_Chessboard_Corners(self,images):
+    # checks for a checkerboard present in an image, and returns list of 2D detected corners and the corresponding 3D points
+    def Find_CheckerBoard_Corners(self,images):
         
-        Init_State , obj_3D , obj_points_3D , img_points_2D = self.Init_Mono_Calib()
+        Init_State , obj_3D , obj_points_3D , img_points_2D = self.Init_CheckerBoard()
         if(Init_State and images):
             print("staring checkerboard detection")
 
@@ -322,10 +338,12 @@ class VP_Calib:
         print("checkerboard detection done and points extracted")
         return True , img_points_2D , obj_points_3D
     
+    # mono calibration function that calculates the camera matrix and distortion coeffs of an arbitrary camera 
     def Mono_Calib(self,images_folder):
         parent_folder = os.path.dirname(os.path.dirname(images_folder))
         images, FRAME_DIM = self.Load_Images(images_folder)
-        Detection_State , img_points_2D , obj_points_3D = self.Find_Chessboard_Corners(images)
+        Detection_State , img_points_2D , obj_points_3D = self.Find_CheckerBoard_Corners(images)
+
         if(Detection_State):
             print("staring calibration")
             RMS_error, Cam_Mat, Cam_dist, Cam_rvecs, Cam_tvecs = cv2.calibrateCamera(obj_points_3D, img_points_2D,FRAME_DIM, None, None)      
@@ -337,8 +355,20 @@ class VP_Calib:
 
         return True
 
-    # def Init_Stereo(self, Parent_Folder_VP, Parent_Folder_TR):
+    # inits the stereo calibration folder by laoding calibration images + calculated camera parameters of the camera pair
+    def Init_Stereo_Calib(self, Parent_Folder):
+        images_folder  = os.path.join(Parent_Folder,"stereo_images")
 
+        Directory , Camera_Name = os.path.split(Parent_Folder)
+        cam_parameters_file  = os.path.join(Parent_Folder,f"Calibration_Data/{Camera_Name}_Parameters.yaml")
+        images, FRAME_DIM = self.Load_Images(images_folder)
+        Detection_State , img_points_2D , obj_points_3D = self.Find_CheckerBoard_Corners(images)
+        MTX , DIST = self.Load_Cam_Parameters(cam_parameters_file)
+
+        return Detection_State, FRAME_DIM, img_points_2D, obj_points_3D, MTX, DIST, Camera_Name
+    
+
+    # runs stereo calibration to retrive the relative pose between two cameras
     def Stereo_Calib(self, Parent_Folder_VP, Parent_Folder_TR):
         flags = 0
         flags |= cv2.CALIB_FIX_INTRINSIC
@@ -354,24 +384,10 @@ class VP_Calib:
         #flags |= cv2.CALIB_FIX_ASPECT_RATIO
         #flags |= cv2.CALIB_ZERO_TANGENT_DIST
 
+        Detection_State_VP , FRAME_DIM_VP , img_points_2D_VP , obj_points_3D_VP, MTX_VP , DIST_VP, Camera_Name_VP =  self.Init_Stereo_Calib(Parent_Folder_VP)
 
-        images_folder_VP  = os.path.join(Parent_Folder_VP,"stereo_images")
-        images_folder_TR  = os.path.join(Parent_Folder_TR,"stereo_images")
+        Detection_State_TR , FRAME_DIM_VP , img_points_2D_TR , obj_points_3D_TR, MTX_TR , DIST_TR, Camera_Name_TR =  self.Init_Stereo_Calib(Parent_Folder_TR)
 
-        Directory , Camera_Name_VP = os.path.split(Parent_Folder_VP)
-        Directory , Camera_Name_TR = os.path.split(Parent_Folder_TR)
-        
-        cam_parameters_file_VP  = os.path.join(Parent_Folder_VP,f"Calibration_Data/{Camera_Name_VP}_Parameters.yaml")
-        cam_parameters_file_TR  = os.path.join(Parent_Folder_TR,f"Calibration_Data/{Camera_Name_TR}_Parameters.yaml")   
-
-        images_VP, FRAME_DIM_VP = self.Load_Images(images_folder_VP)
-        images_TR, FRAME_DIM_TR = self.Load_Images(images_folder_TR)
-
-        Detection_State_VP , img_points_2D_VP , obj_points_3D_VP = self.Find_Chessboard_Corners(images_VP)
-        Detection_State_TR , img_points_2D_TR , obj_points_3D_TR = self.Find_Chessboard_Corners(images_TR)
-
-        MTX_VP , DIST_VP = self.Load_Cam_Parameters(cam_parameters_file_VP)
-        MTX_TR , DIST_TR = self.Load_Cam_Parameters(cam_parameters_file_TR)
 
         if(Detection_State_VP == True and  Detection_State_TR == True):
             print("staring stereo calibration")
@@ -390,14 +406,16 @@ class VP_Calib:
         angles = r.as_euler("xyz",degrees=True)
 
         print("stereo calibration done") 
+        print("relative pose ----->")       
         print("RMS ----->" + str(RMS_error))       
         print("relative translation ----->" +str(T))       
         print("relative rotation ----->" + str(angles))    
 
         Save_File = os.path.join(self.current_directory, f"{Camera_Name_VP}__{Camera_Name_TR}.yaml")
         self.Save_Stereo_Calib(RMS_error, T, angles, Save_File)
-        return Save_File
+        return True
     
+    # calculates the mean error of camera calibration process
     def Mean_Calib_Error(self,obj_points_3D, img_points_2D, Cam_rvecs, Cam_tvecs, Cam_Mat, Cam_dist):
         print("Calculating Mean Error ")
         total_error = 0
@@ -408,6 +426,7 @@ class VP_Calib:
         mean_error = total_error/len(obj_points_3D)
         return mean_error
     
+    # loads camera matrix and distortion coeffs to be used by any code snippet
     def Load_Cam_Parameters(self, filepath):
         with open(filepath, 'r') as stream:
             data_loaded = yaml.safe_load(stream)
@@ -427,7 +446,7 @@ class VP_Calib:
         print(f"Loading done  --->{filepath}")
         return Cam_Mat , Cam_Dist
         
-
+    # saves calibrated camera matrix and distortion coeffs 
     def Save_Mono_Calib(self, Parent_Folder = "Default", image_size = 0,  Cam_Mat=0, Cam_Dist=0, rms_error=0, mean_error=0, FOV_Camera_Data = 0 ):
         Directory , Camera_Name = os.path.split(Parent_Folder)
         Save_Folder = f"{Parent_Folder}/Calibration_Data"
@@ -473,6 +492,8 @@ class VP_Calib:
         print(f"camera parameters save done in file --->{Save_File}")
         return Save_File
 
+
+    # saves calculated relative pose between the camera pair
     def Save_Stereo_Calib(self, RMS_error, Translation, angles, Save_File):
         Translation = np.squeeze(Translation).tolist()
         angles = angles.tolist()
@@ -494,11 +515,14 @@ class VP_Calib:
         return Save_File
     
 
-
+    # calculates the needed properties of the virtual production camera such as the horizontal and vertical fov, 
     def VP_Camera_Parameters(self, VP_Cam_Mat):
          
         data = cv2.calibrationMatrixValues(VP_Cam_Mat, self.FRAME_DIM, self.VP_Cam_sensor_width, self.VP_Cam_sensor_height)
         pixel_size = self.VP_Cam_sensor_width / self.VP_Cam_pixels_horizontal *1000 # um
 
         return data
+
+
+
 
