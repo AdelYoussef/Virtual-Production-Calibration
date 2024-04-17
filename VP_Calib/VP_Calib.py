@@ -131,52 +131,68 @@ class VP_Calib:
             
 
     # just a dummy crosshair that marks the center of the image, can be very useful
-    def Crosshair(self,Frame):
-        width, height = Frame.shape[1] , Frame.shape[0]
-        cv2.line(Frame, (int(width/2), 0) , (int(width/2), height) , (0, 255, 0), 2)
-        cv2.line(Frame, (0, int(height/2)) , (width, int(height/2)) , (0, 255, 0), 2)
+    def Crosshair(self,Frame,condition = "None"):
+        cv2.putText(Frame, f"crosshair mode---> {condition}", (1400, 50), cv2.FONT_HERSHEY_SIMPLEX ,  1, (0, 255, 0) , 2, cv2.LINE_AA) 
+        if condition == "Ideal":
+            width, height = Frame.shape[1] , Frame.shape[0]
+            cv2.line(Frame, (int(width/2), 0) , (int(width/2), height) , (0, 255, 0), 2)  #vertical line
+            cv2.line(Frame, (0, int(height/2)) , (width, int(height/2)) , (0, 255, 0), 2) #horizontal line
+        
+        if condition == "Calibrated":
+            cv2.line(Frame, (self.Crosshair_Cx, 0) , (self.Crosshair_Cx, height) , (0, 0, 255), 2)  #vertical line
+            cv2.line(Frame, (0, self.Crosshair_Cy) , (width, self.Crosshair_Cy) , (0, 0, 255), 2)   #horizontal line
+
+        if condition == "Both":
+            width, height = Frame.shape[1] , Frame.shape[0]
+            cv2.line(Frame, (int(width/2), 0) , (int(width/2), height) , (0, 255, 0), 2)  #vertical line
+            cv2.line(Frame, (0, int(height/2)) , (width, int(height/2)) , (0, 255, 0), 2) #horizontal line
+
+            cv2.line(Frame, (self.Crosshair_Cx, 0) , (self.Crosshair_Cx, height) , (0, 0, 255), 2)  #vertical line
+            cv2.line(Frame, (0, self.Crosshair_Cy) , (width, self.Crosshair_Cy) , (0, 0, 255), 2)   #horizontal line
+            
         return Frame
 
     # inits the detection and pose estimation of an aruco marker, sets aruco dict, inits the transformation matrix, as well as loads the used camera matrix and distortion parameters
     def Init_Aruco(self,Camera_Parameters_File_Path):
         self.Aruco_Cam_Mat, self.Aruco_Cam_Dist = self.Load_Cam_Parameters(Camera_Parameters_File_Path)
         self.marker_dict = aruco.getPredefinedDictionary(aruco.DICT_6X6_100)
-        self.Camera_Transform_Aruco = np.array([[0, 0, 0, 0],
-                                                [0, 0, 0, 0],
-                                                [0, 0, 0, 0],
-                                                [0, 0, 0, 1]],
-                                                dtype = float)
+        self.Camera_Transform_Aruco = np.eye(4, dtype=float)
         
     #detects the presence of an aruco marker in a passed frame and returns a new frame with plotted detection
     def Aruco_Detection(self, Frame):
+        Detection_State = False
         self.Camera_marker_corners,  self.Camera_marker_IDs, Camera_reject = aruco.detectMarkers(Frame, self.marker_dict)
         if self.Camera_marker_corners:
             Camera_rVec_Aruco, Camera_tVec_Aruco, _ = aruco.estimatePoseSingleMarkers(self.Camera_marker_corners, self.ARUCO_MARKER_SIZE, self.Aruco_Cam_Mat, self.Aruco_Cam_Dist)
             index = np.where( self.Camera_marker_IDs==self.ARUCO_MARKER_ID)[0][0]
 
-            self.corners  = self.Camera_marker_corners[index]
-            self.Rot_Vec = np.squeeze(Camera_rVec_Aruco[index])
-            self.Trans_Vec = np.squeeze(Camera_tVec_Aruco[index])
+            self.Aruco_corners  = self.Camera_marker_corners[index]
+            self.Aruco_Rot_Vec = np.squeeze(Camera_rVec_Aruco[index])
+            self.Aruco_Trans_Vec = np.squeeze(Camera_tVec_Aruco[index])
 
 
-            self.Camera_Transform_Aruco[:3,3] = self.Trans_Vec
-            self.Camera_Transform_Aruco[:3,:3] , _ = cv2.Rodrigues(self.Rot_Vec)
+            self.Camera_Transform_Aruco[:3,3] = self.Aruco_Trans_Vec
+            self.Camera_Transform_Aruco[:3,:3] , _ = cv2.Rodrigues(self.Aruco_Rot_Vec)
             Rot =  Rotation.from_matrix(self.Camera_Transform_Aruco[:3,:3] )
             self.Euler_Angles_Aruco = Rot.as_euler("xyz",degrees=True)
             
             self.Aruco_Transform_Camera = np.linalg.inv(self.Camera_Transform_Aruco)
 
-            self.Inv_Trans_Vec = self.Aruco_Transform_Camera [:3,3]
+            self.Inv_Aruco_Trans_Vec = self.Aruco_Transform_Camera [:3,3]
             Inv_Rot = Rotation.from_matrix(self.Aruco_Transform_Camera[:3,:3])
             self.Inv_Euler_Angles_Aruco = Inv_Rot.as_euler("xyz",degrees=True)
-            
+
             self.Arcuo_Draw_Detection(Frame)
+            Detection_State = True
+
+        return(Detection_State)
+
                 
 
         
     #draws the plotted detection of any aruco marker present in the camera frame
     def Arcuo_Draw_Detection(self, Frame):
-        corners = self.corners.reshape(4, 2)
+        corners = self.Aruco_corners.reshape(4, 2)
         top_left = corners[0].ravel().astype(int)
         top_right = corners[1].ravel().astype(int)
         bottom_right = corners[2].ravel().astype(int)
@@ -188,11 +204,11 @@ class VP_Calib:
         cv2.circle(Frame, bottom_right, 2, (255,0,255), 2)
         cv2.circle(Frame, bottom_left, 2, (0,255,0), 2)
 
-        cv2.drawFrameAxes(Frame, self.Aruco_Cam_Mat, self.Aruco_Cam_Dist, self.Rot_Vec, self.Trans_Vec, 4, 4)
+        cv2.drawFrameAxes(Frame, self.Aruco_Cam_Mat, self.Aruco_Cam_Dist, self.Aruco_Rot_Vec, self.Aruco_Trans_Vec, 100, 5)
 
         if(self.ARUCO_MODE == "Aruco Pose"):
             cv2.putText(Frame,
-                        f"x:{round(self.Trans_Vec[0],1)} y: {round(self.Trans_Vec[1],1)} z: {round(self.Trans_Vec[2],1)} ",
+                        f"x:{round(self.Aruco_Trans_Vec[0],1)} y: {round(self.Aruco_Trans_Vec[1],1)} z: {round(self.Aruco_Trans_Vec[2],1)} ",
                         (50, 50),cv2.FONT_HERSHEY_PLAIN,1.5,(0, 0, 255),4,cv2.LINE_AA,)
 
             cv2.putText(Frame,
@@ -202,7 +218,7 @@ class VP_Calib:
 
         if(self.ARUCO_MODE == "Camera Pose"):
             cv2.putText(Frame,
-                        f"x:{round(self.Inv_Trans_Vec[0],1)} y: {round(self.Inv_Trans_Vec[1],1)} z: {round(self.Inv_Trans_Vec[2],1)} ",
+                        f"x:{round(self.Inv_Aruco_Trans_Vec[0],1)} y: {round(self.Inv_Aruco_Trans_Vec[1],1)} z: {round(self.Inv_Aruco_Trans_Vec[2],1)} ",
                         (50, 50),cv2.FONT_HERSHEY_PLAIN,1.5,(0, 0, 255),4,cv2.LINE_AA,)
 
             cv2.putText(Frame,
@@ -212,18 +228,21 @@ class VP_Calib:
 
 
     #starts a live feed of any camera passed for the purpose of saving a single image to be used later, or just simple monitor for the feed
-    def Capture_Single_Image(self, Camera_Type, id):
+    def Capture_Single_Image(self, Camera_Type, id = 0, Camera_Name = "None"):
         Capture = self.Init_Live_Camera(Camera_Type , id)
+        save_path = f"{self.current_directory}/{Camera_Name}.png"
         while True:
             Frame = self.Get_Frame(Camera_Type, Capture)
             Frame = cv2.resize(Frame, self.VIEW_DIM)
             cv2.imshow("Frame", Frame)
             key = cv2.waitKey(1)
             if key == ord("q"):
+                cv2.destroyAllWindows()
                 break
             if key == ord("s"):
-                cv2.imwrite(self.current_directory, Frame)
-
+                cv2.imwrite(save_path, Frame)
+                cv2.putText(Frame, f"image saved---> {Camera_Name}.png", (50, 50), cv2.FONT_HERSHEY_SIMPLEX ,  1, (0, 255, 0) , 2, cv2.LINE_AA) 
+        return save_path
 
     #starts a live feed with purpose of capturing and saving images to be used in camera calibration later 
     #caputred images need to have a detected checkerboard after setting it's rows and columbns in the config file
@@ -249,8 +268,8 @@ class VP_Calib:
             cv2.imshow("Live Frame mono calib", Frame)
             key = cv2.waitKey(1)
             if key == ord("q"):
+                cv2.destroyAllWindows()
                 break
-
             if key == ord("s"):
                 cv2.imwrite(f"{save_folder}/image{save_count}.png", Save_Frame)
                 save_count +=1
@@ -292,6 +311,7 @@ class VP_Calib:
             
             key = cv2.waitKey(1)
             if key == ord("q"):
+                cv2.destroyAllWindows()
                 break
 
             if key == ord("s"):
@@ -459,6 +479,8 @@ class VP_Calib:
         k3 = data_loaded["k3"]
         p1 = data_loaded["p1"]
         p2 = data_loaded["p2"]
+        self.Crosshair_Cx = int(round(cx))
+        self.Crosshair_Cy = int(round(cy))
         Cam_Dist =  np.array([k1 , k2 , k3 , p1 , p2])
         Cam_Mat = np.array([[fx , 0 , cx],[0 , fy , cy],[0 , 0 , 1]])
         print(f"Loading done  --->{filepath}")
